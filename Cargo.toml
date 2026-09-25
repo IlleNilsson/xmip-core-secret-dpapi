@@ -1,25 +1,33 @@
 # Its own workspace root, so this repository builds on its own.
-#
-# Every module repository carries this and the template did not, which stopped
-# mattering the moment the template stopped sitting beside the estate: nested at
-# template/rust, cargo walked up, found the root workspace and refused to build.
-#
-# It would have bitten a generated repository the same way. A template that does
-# not obey the estate's rules produces repositories that start out breaking
-# them — doc/governance/rust-style.md section 4.
 [workspace]
 
 [package]
-name = "xmip-template-rust"
+name = "xmip-core-secret-dpapi"
 version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
-repository = "https://github.com/IlleNilsson/xmip-template-rust"
-description = "Starter template for a Rust Xmip module repository."
+repository = "https://github.com/IlleNilsson/xmip-core-secret-dpapi"
+description = "Windows DPAPI: a key-encryption key in a file sealed by CryptProtectData under the Service Identity. A xmip-core-secret technology."
 publish = false
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+# A Technology depends on its parent Capability, never the reverse
+# (repository-model.md). KekHolder, the wrapping and the errors live there;
+# this crate only keeps the key.
+secret = { package = "xmip-core-secret", git = "https://github.com/IlleNilsson/xmip-core-secret", branch = "main" }
+# The key's bytes are overwritten when they are dropped.
+zeroize = "1"
+
+[target.'cfg(windows)'.dependencies]
+# CryptProtectData and CryptUnprotectData behind a safe function each. A module
+# crate forbids unsafe, and this is where the FFI lives instead of here
+# (ADR-0050, amendment 2026-09-16: where unsafe may live is the owner's
+# ruling). User scope only: machine scope would let any account on the machine
+# open the key.
+windows-dpapi = "0.2"
 
 [lints.rust]
 # forbid, not deny: a module has no business writing unsafe. The one exception

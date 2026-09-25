@@ -1,42 +1,34 @@
-# Xmip repository template — Rust
+# xmip-core-secret-dpapi
 
-This repository is the starter snapshot for a Rust Xmip module repository. It is
-not an Xmip runtime capability.
+Windows DPAPI as the key home's store (ADR-0063 clause 4). A technology of
+[xmip-core-secret](https://github.com/IlleNilsson/xmip-core-secret).
 
-For a .NET 11 surface — the CLI, the PowerShell module, the MAUI desktop GUI or
-the Blazor web GUI — use
-[xmip-template-dotnet](https://github.com/IlleNilsson/xmip-template-dotnet)
-instead. ADR-0014: every user-interfacing module is .NET 11, and
-`xmip-core-abi` is the exception.
+A key-encryption key is thirty-two random bytes, sealed by `CryptProtectData`
+in user scope under the Service Identity and written to
+`<directory>/<name>.kek`. Only that identity on that machine can unseal it;
+another account, or the file copied elsewhere, is refused by Windows. The
+key's name is DPAPI's entropy too, so a file renamed to another key's name
+does not open. A key file is created once and never replaced.
 
-A repository generated from this template has independent history. Later
-template changes do not automatically rewrite generated repositories.
+`Dpapi` is a `secret::KekHolder`; `secret::Held::new(Dpapi::new(dir))` is the
+`KeyStore`. On other platforms the crate is empty.
 
-## Before implementation
+## The system call
 
-Follow [TEMPLATE_SETUP.md](TEMPLATE_SETUP.md), and item 3 first. The new
-repository must be classified and declared in the authoritative Xmip
-architecture manifest before its responsibility or dependencies are treated as
-accepted architecture.
-
-## Toolchain
-
-`rust-toolchain.toml` pins the toolchain for the whole estate. rustup reads it
-automatically and installs what is missing. Do not change it here — raising it
-is one deliberate change across every repository.
-
-## Shared governance
-
-Repository-specific licensing remains explicit in [LICENSE](LICENSE).
-Contribution, security, support, issue and pull-request defaults are inherited
-from [IlleNilsson/.github](https://github.com/IlleNilsson/.github) when they are
-not overridden locally.
+`CryptProtectData` and `CryptUnprotectData` are reached through the
+`windows-dpapi` crate, whose safe functions hold the FFI, so this crate keeps
+`unsafe_code = "forbid"`. Machine scope is never used: it would let any
+account on the machine open the key. ADR-0050's amendment of 2026-09-25
+permits the two calls in one file of this crate over `windows-sys` instead;
+not done, because the safe crate serves and because the amendment's
+mechanism — `forbid` in `Cargo.toml`, lowered by that one file — is refused
+by the compiler (E0453: an `allow` cannot follow a `forbid`), which is the
+owner's to settle first.
 
 ## Verification
 
-The included workflow is manual-only and calls the versioned shared workflow at
-`IlleNilsson/.github@v1`. It does not run on pushes, pull requests or a
-schedule.
-
-The ordered stages are formatting, semantic analysis, linting, compilation and
-linking, and test execution. Packaging and publishing are not configured.
+Tested on Windows: a key wraps and unwraps through DPAPI across two store
+instances, the file on disk is not the key, a missing key is refused by name,
+a key file renamed to another name does not open, an existing key is never
+replaced. The workflow is manual-only and calls the versioned shared workflow
+at `IlleNilsson/.github@v1`.
