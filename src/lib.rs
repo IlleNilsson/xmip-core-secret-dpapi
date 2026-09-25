@@ -1,5 +1,3 @@
-#![forbid(unsafe_code)]
-
 //! Windows DPAPI as the key home's store (ADR-0063 clause 4).
 //!
 //! A key-encryption key is thirty-two random bytes, sealed by
@@ -12,7 +10,15 @@
 //! [`Dpapi`] is a [`secret::KekHolder`]; wrap it in [`secret::Held`] for a
 //! [`secret::KeyStore`]. Windows only: on any other platform this crate is
 //! empty, and the `file` or `keychain` technology is the store there.
+//!
+//! The two DPAPI calls are in `src/crypt_protect.rs`, the one file of this crate
+//! that may hold unsafe code (ADR-0050, amendment 2026-09-25).
 
+#[cfg(windows)]
+mod crypt_protect;
+
+#[cfg(windows)]
+use crypt_protect::{protect, unprotect};
 #[cfg(windows)]
 use secret::{KekHolder, KekName, SecretError, Store};
 #[cfg(windows)]
@@ -21,8 +27,6 @@ use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
 #[cfg(windows)]
 use std::path::PathBuf;
-#[cfg(windows)]
-use windows_dpapi::{Scope, decrypt_data, encrypt_data};
 #[cfg(windows)]
 use zeroize::Zeroizing;
 
@@ -74,11 +78,11 @@ impl KekHolder for Dpapi {
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(SecretError::store(format!("{}: {error}", path.display()))),
         };
-        decrypt_data(&sealed, Scope::User, Some(&entropy(name)))
-            .map(|key| Some(Zeroizing::new(key)))
+        unprotect(&sealed, &entropy(name))
+            .map(Some)
             .map_err(|error| {
                 SecretError::store(format!(
-                    "{} does not open for this identity on this machine: {error:#}",
+                    "{} does not open for this identity on this machine: {error}",
                     path.display()
                 ))
             })
@@ -86,8 +90,7 @@ impl KekHolder for Dpapi {
 
     fn create(&self, name: &KekName, material: &[u8]) -> Result<(), SecretError> {
         let path = self.path(name);
-        let sealed = encrypt_data(material, Scope::User, Some(&entropy(name)))
-            .map_err(|error| SecretError::store(format!("CryptProtectData: {error:#}")))?;
+        let sealed = protect(material, &entropy(name)).map_err(SecretError::store)?;
         fs::create_dir_all(&self.directory).map_err(SecretError::store)?;
         // create_new: a key already there is never replaced (KekHolder).
         let mut file = OpenOptions::new()
