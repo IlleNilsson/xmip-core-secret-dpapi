@@ -22,18 +22,20 @@ secret = { package = "xmip-core-secret", git = "https://github.com/IlleNilsson/x
 zeroize = "1"
 
 [target.'cfg(windows)'.dependencies]
-# CryptProtectData and CryptUnprotectData behind a safe function each. A module
-# crate forbids unsafe, and this is where the FFI lives instead of here
-# (ADR-0050, amendment 2026-09-16: where unsafe may live is the owner's
-# ruling). User scope only: machine scope would let any account on the machine
-# open the key.
-windows-dpapi = "0.2"
+# CryptProtectData, CryptUnprotectData and LocalFree, called in the one file
+# src/crypt_protect.rs (ADR-0050, amendment 2026-09-25). User scope only:
+# machine scope would let any account on the machine open the key.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+] }
 
 [lints.rust]
-# forbid, not deny: a module has no business writing unsafe. The one exception
-# in the estate is xmip-core-abi, which holds the extern "C" vtable over
-# include/xmip_module.h and lowers this to deny with a reason at the call site.
-unsafe_code = "forbid"
+# deny, not forbid, because forbid cannot be lowered anywhere: the one file
+# src/crypt_protect.rs allows unsafe code with its reason at the top (ADR-0050,
+# amendment 2026-09-25), and nothing else may. test/Unsafe.Test.ps1 holds the
+# list.
+unsafe_code = "deny"
 
 [lints.clippy]
 # Warned, never denied. doc/governance/rust-style.md section 3: a function

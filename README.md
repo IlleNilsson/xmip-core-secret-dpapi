@@ -15,15 +15,15 @@ does not open. A key file is created once and never replaced.
 
 ## The system call
 
-`CryptProtectData` and `CryptUnprotectData` are reached through the
-`windows-dpapi` crate, whose safe functions hold the FFI, so this crate keeps
-`unsafe_code = "forbid"`. Machine scope is never used: it would let any
-account on the machine open the key. ADR-0050's amendment of 2026-09-25
-permits the two calls in one file of this crate over `windows-sys` instead;
-not done, because the safe crate serves and because the amendment's
-mechanism — `forbid` in `Cargo.toml`, lowered by that one file — is refused
-by the compiler (E0453: an `allow` cannot follow a `forbid`), which is the
-owner's to settle first.
+`CryptProtectData`, `CryptUnprotectData` and `LocalFree` are called through
+`windows-sys` in `src/crypt_protect.rs`, the one file of this crate that
+allows unsafe code (ADR-0050, amendment 2026-09-25); every block there says
+where its pointers come from, how long they live and who frees them.
+`Cargo.toml` sets `unsafe_code = "deny"`, and `test/Unsafe.Test.ps1` in the
+estate lists the file. The unsealed key is wiped in DPAPI's own buffer before
+it is freed. Machine scope is never used: it would let any account on the
+machine open the key. Until 2026-09-25 the calls went through the
+`windows-dpapi` crate, built on the unmaintained `winapi`.
 
 ## Verification
 
