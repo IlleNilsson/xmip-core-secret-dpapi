@@ -20,11 +20,11 @@ mod crypt_protect;
 #[cfg(windows)]
 use crypt_protect::{protect, unprotect};
 #[cfg(windows)]
-use secret::{KekHolder, KekName, SecretError, Store};
+use secret::{KekHolder, KekName, KeyDirectory, SecretError, Store};
 #[cfg(windows)]
 use std::fs::{self, OpenOptions};
 #[cfg(windows)]
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 #[cfg(windows)]
 use std::path::PathBuf;
 #[cfg(windows)]
@@ -33,7 +33,7 @@ use zeroize::Zeroizing;
 /// Key-encryption keys as DPAPI-sealed files in one directory.
 #[cfg(windows)]
 pub struct Dpapi {
-    directory: PathBuf,
+    keys: KeyDirectory,
 }
 
 #[cfg(windows)]
@@ -42,12 +42,8 @@ impl Dpapi {
     /// first key is.
     pub fn new(directory: impl Into<PathBuf>) -> Self {
         Self {
-            directory: directory.into(),
+            keys: KeyDirectory::new(directory),
         }
-    }
-
-    fn path(&self, name: &KekName) -> PathBuf {
-        self.directory.join(format!("{name}.kek"))
     }
 }
 
@@ -67,16 +63,16 @@ impl KekHolder for Dpapi {
     fn store(&self) -> Store {
         Store {
             technology: "dpapi",
-            place: self.directory.display().to_string(),
+            place: self.keys.directory().display().to_string(),
         }
     }
 
     fn read(&self, name: &KekName) -> Result<Option<Zeroizing<Vec<u8>>>, SecretError> {
-        let path = self.path(name);
+        let path = self.keys.path(name);
         let sealed = match fs::read(&path) {
             Ok(sealed) => sealed,
             Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(SecretError::store(format!("{}: {error}", path.display()))),
+            Err(error) => return Err(KeyDirectory::failed(&path, &error)),
         };
         unprotect(&sealed, &entropy(name))
             .map(Some)
@@ -89,18 +85,9 @@ impl KekHolder for Dpapi {
     }
 
     fn create(&self, name: &KekName, material: &[u8]) -> Result<(), SecretError> {
-        let path = self.path(name);
         let sealed = protect(material, &entropy(name)).map_err(SecretError::store)?;
-        fs::create_dir_all(&self.directory).map_err(SecretError::store)?;
-        // create_new: a key already there is never replaced (KekHolder).
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|error| SecretError::store(format!("{}: {error}", path.display())))?;
-        file.write_all(&sealed)
-            .and_then(|()| file.sync_all())
-            .map_err(|error| SecretError::store(format!("{}: {error}", path.display())))
+        fs::create_dir_all(self.keys.directory()).map_err(SecretError::store)?;
+        self.keys.create_new(name, &sealed, &mut OpenOptions::new())
     }
 }
 
