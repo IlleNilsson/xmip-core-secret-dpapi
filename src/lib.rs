@@ -124,7 +124,7 @@ mod tests {
     fn a_key_wraps_and_unwraps_through_dpapi() {
         let dir = directory("round");
         let store = Held::new(Dpapi::new(&dir));
-        let key = DataKey::generate().expect("key");
+        let key = DataKey::generate();
         let wrapped = store.wrap(&name("runtime"), &key).expect("wrapped");
         let again = Held::new(Dpapi::new(&dir));
         let back = again.unwrap(&name("runtime"), &wrapped).expect("unwrapped");
