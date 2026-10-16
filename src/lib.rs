@@ -22,7 +22,7 @@ use crypt_protect::{protect, unprotect};
 #[cfg(windows)]
 use secret::{KekHolder, KekName, KeyDirectory, SecretError, Store};
 #[cfg(windows)]
-use std::fs::{self, OpenOptions};
+use std::fs;
 #[cfg(windows)]
 use std::io::ErrorKind;
 #[cfg(windows)]
@@ -86,8 +86,8 @@ impl KekHolder for Dpapi {
 
     fn create(&self, name: &KekName, material: &[u8]) -> Result<(), SecretError> {
         let sealed = protect(material, &entropy(name)).map_err(SecretError::store)?;
-        fs::create_dir_all(self.keys.directory()).map_err(SecretError::store)?;
-        self.keys.create_new(name, &sealed, &mut OpenOptions::new())
+        self.keys.create_directory()?;
+        self.keys.create(name, &sealed)
     }
 }
 
@@ -129,6 +129,10 @@ mod tests {
         holder.create(&name("k"), &[7u8; 32]).expect("created");
         let on_disk = fs::read(dir.join("k.kek")).expect("file");
         assert!(!on_disk.windows(32).any(|w| w == [7u8; 32]));
+        // And it is a private file: this user and SYSTEM, no one else.
+        let private = secret::private_file::owner_only(false).expect("the list");
+        let described = secret::private_file::described(&dir.join("k.kek")).expect("read");
+        assert_eq!(described, private);
         let _ = fs::remove_dir_all(&dir);
     }
 
