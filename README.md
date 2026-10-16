@@ -8,7 +8,10 @@ in user scope under the Service Identity and written to
 `<directory>/<name>.kek`. Only that identity on that machine can unseal it;
 another account, or the file copied elsewhere, is refused by Windows. The
 key's name is DPAPI's entropy too, so a file renamed to another key's name
-does not open. A key file is created once and never replaced.
+does not open. A key file is created once and never replaced, a private file
+(`secret`'s `private_file`): its access list grants the Service Identity and
+`SYSTEM` alone, set before its first byte, and it is synced before it takes
+its name, so a crash leaves no half key.
 
 `Dpapi` is a `secret::KekHolder`; `secret::Held::new(Dpapi::new(dir))` is the
 `KeyStore`. On other platforms the crate is empty.
@@ -28,7 +31,8 @@ machine open the key. Until 2026-09-25 the calls went through the
 ## Verification
 
 Tested on Windows: a key wraps and unwraps through DPAPI across two store
-instances, the file on disk is not the key, a missing key is refused by name,
+instances, the file on disk is not the key and its access list is the
+Service Identity's and `SYSTEM`'s alone, a missing key is refused by name,
 a key file renamed to another name does not open, an existing key is never
 replaced. The workflow is manual-only and calls the versioned shared workflow
 at `IlleNilsson/.github@v1`.
