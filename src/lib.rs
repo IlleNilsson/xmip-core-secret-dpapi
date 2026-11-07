@@ -95,6 +95,7 @@ impl KekHolder for Dpapi {
 mod tests {
     use super::*;
     use secret::{DataKey, Held, KeyStore};
+    use std::assert_matches;
 
     fn directory(test: &str) -> PathBuf {
         let path =
@@ -154,10 +155,7 @@ mod tests {
         let holder = Dpapi::new(&dir);
         holder.create(&name("one"), &[7u8; 32]).expect("created");
         fs::rename(dir.join("one.kek"), dir.join("two.kek")).expect("renamed");
-        assert!(matches!(
-            holder.read(&name("two")),
-            Err(SecretError::Store { .. })
-        ));
+        assert_matches!(holder.read(&name("two")), Err(SecretError::Store { .. }));
         let _ = fs::remove_dir_all(&dir);
     }
 
