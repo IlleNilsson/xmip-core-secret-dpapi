@@ -94,14 +94,15 @@ impl KekHolder for Dpapi {
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+    use file::temporary::Folder;
     use secret::{DataKey, Held, KeyStore};
     use std::assert_matches;
 
-    fn directory(test: &str) -> PathBuf {
-        let path =
-            std::env::temp_dir().join(format!("xmip-secret-dpapi-{test}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&path);
-        path
+    /// A folder of the test's own, and the key directory in it, not made yet.
+    fn directory(test: &str) -> (Folder, PathBuf) {
+        let folder = Folder::new(&format!("secret-dpapi-{test}"));
+        let directory = folder.join("keys");
+        (folder, directory)
     }
 
     fn name(text: &str) -> KekName {
@@ -110,7 +111,7 @@ mod tests {
 
     #[test]
     fn a_key_wraps_and_unwraps_through_dpapi() {
-        let dir = directory("round");
+        let (_folder, dir) = directory("round");
         let store = Held::new(Dpapi::new(&dir));
         let key = DataKey::generate();
         let wrapped = store.wrap(&name("runtime"), &key).expect("wrapped");
@@ -120,12 +121,11 @@ mod tests {
         let sealed = key.seal(b"a", b"payload").expect("sealed");
         assert_eq!(back.open(b"a", &sealed).expect("opened"), b"payload");
         assert_eq!(store.store().technology, "dpapi");
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn the_file_on_disk_is_not_the_key() {
-        let dir = directory("sealed");
+        let (_folder, dir) = directory("sealed");
         let holder = Dpapi::new(&dir);
         holder.create(&name("k"), &[7u8; 32]).expect("created");
         let on_disk = fs::read(dir.join("k.kek")).expect("file");
@@ -134,12 +134,11 @@ mod tests {
         let private = secret::private_file::owner_only(false).expect("the list");
         let described = secret::private_file::described(&dir.join("k.kek")).expect("read");
         assert_eq!(described, private);
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_missing_key_is_refused_by_name() {
-        let dir = directory("missing");
+        let (_folder, dir) = directory("missing");
         let store = Held::new(Dpapi::new(&dir));
         let refused = store.unwrap(&name("absent"), &[0; 60]);
         let Err(SecretError::MissingKek { name, store: place }) = refused else {
@@ -151,22 +150,20 @@ mod tests {
 
     #[test]
     fn a_key_file_renamed_to_another_name_does_not_open() {
-        let dir = directory("renamed");
+        let (_folder, dir) = directory("renamed");
         let holder = Dpapi::new(&dir);
         holder.create(&name("one"), &[7u8; 32]).expect("created");
         fs::rename(dir.join("one.kek"), dir.join("two.kek")).expect("renamed");
         assert_matches!(holder.read(&name("two")), Err(SecretError::Store { .. }));
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn an_existing_key_is_never_replaced() {
-        let dir = directory("replace");
+        let (_folder, dir) = directory("replace");
         let holder = Dpapi::new(&dir);
         holder.create(&name("k"), &[1u8; 32]).expect("created");
         assert!(holder.create(&name("k"), &[2u8; 32]).is_err());
         let kept = holder.read(&name("k")).expect("read").expect("held");
         assert_eq!(kept.as_slice(), &[1u8; 32]);
-        let _ = fs::remove_dir_all(&dir);
     }
 }
